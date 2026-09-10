@@ -166,6 +166,30 @@ class MetadataBuilder:
             "COMPUTERS / Artificial Intelligence",
             "MATHEMATICS / Probability & Statistics",
         ],
+        "copywriting-seo": [
+            "BUSINESS & ECONOMICS / Marketing",
+            "REFERENCE / Writing Skills",
+        ],
+        "real-estate-investing": [
+            "BUSINESS & ECONOMICS / Real Estate",
+            "BUSINESS & ECONOMICS / Investments",
+        ],
+        "cryptocurrency-blockchain": [
+            "BUSINESS & ECONOMICS / Investments",
+            "COMPUTERS / Networking & Internet",
+        ],
+        "personal-branding": [
+            "BUSINESS & ECONOMICS / Entrepreneurship",
+            "SELF-HELP / Personal Improvement and Analysis",
+        ],
+        "e-commerce-amazon": [
+            "BUSINESS & ECONOMICS / E-Commerce",
+            "BUSINESS & ECONOMICS / Entrepreneurship",
+        ],
+        "voice-podcast-strategy": [
+            "BUSINESS & ECONOMICS / Marketing",
+            "PERFORMING ARTS / Audio & Sound",
+        ],
     }
 
     @staticmethod
@@ -204,11 +228,14 @@ class MetadataBuilder:
         )
 
         # Apply niche-specific pricing rules
-        if niche == "technical-writing":
-            metadata.base_price = 14.99
-        elif niche == "machine-learning":
-            metadata.base_price = 19.99
-        # Most others stay at 9.99 for accessible pricing
+        # Premium niches: high market demand + business value
+        if niche in ["machine-learning", "real-estate-investing", "e-commerce-amazon", "cryptocurrency-blockchain"]:
+            metadata.base_price = 19.99  # Business/investing readers pay premium
+        elif niche in ["technical-writing", "copywriting-seo", "personal-branding"]:
+            metadata.base_price = 14.99  # Professional development/skills
+        elif niche in ["voice-podcast-strategy", "ai-for-business"]:
+            metadata.base_price = 12.99  # Medium demand + actionable value
+        # Others stay at 9.99 for accessible pricing
 
         return metadata
 

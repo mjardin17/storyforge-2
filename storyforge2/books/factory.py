@@ -5,9 +5,12 @@ Coordinates all stages: trend scanning → brief generation → manuscript →
 cover → metadata → publishing. Runs 24/7 autonomously via a scheduler or
 event loop.
 
-The BookFactory operates in DRY_RUN mode by default (nothing publishes
-without explicit approval). A full cycle takes ~30-60 minutes per book,
-with the longest step being manuscript generation (Claude API).
+The BookFactory operates in DRY_RUN mode by default. Even when called with
+dry_run=False (e.g. via `run_book_factory.py --live`, including from the
+daily scheduled task), a cycle cannot actually publish to a real platform
+unless it has been separately approved — see storyforge2/approval.py and
+run_cycle()'s step 5. A full cycle takes ~30-60 minutes per book, with the
+longest step being manuscript generation (Claude API).
 
 State is tracked in books/factory_state.db (SQLite) for resumability.
 """
@@ -26,6 +29,8 @@ from storyforge2.books.trends import TrendScanner, TrendOpportunity
 from storyforge2.books.metadata import MetadataBuilder, BookMetadata
 from storyforge2.pipeline import BookPipeline
 from storyforge2.video.commercial import queue_book_commercial
+from storyforge2.books.listings import queue_book_listings
+from storyforge2.approval import ApprovalGate
 
 __all__ = ["BookFactory", "BookFactoryError"]
 
@@ -48,6 +53,7 @@ class BookCycle:
     brief: Optional[ProjectBrief] = None
     metadata: Optional[BookMetadata] = None
     work_dir: Optional[Path] = None
+    pipeline: Optional[BookPipeline] = None
     status: str = "initialized"  # initialized → manuscript → cover → metadata → publish
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -85,6 +91,13 @@ class BookFactory:
         self.state_db = self.work_base / "factory_state.db"
         self._open_connections = []
         self._init_db()
+        # Human approval gate — see storyforge2/approval.py. No cycle
+        # publishes to a real platform, regardless of dry_run/--live, unless
+        # it has been explicitly approved via `python -m storyforge2.approval
+        # approve <cycle_id>`. This closes the gap between this docstring's
+        # long-standing claim ("manual approval in MVP") and the code, which
+        # previously had no such gate at all.
+        self.approval = ApprovalGate(self.work_base)
 
     def __enter__(self):
         return self
@@ -171,10 +184,25 @@ class BookFactory:
             # Falls back to mock if API key is not set
             credentials = self._load_credentials()
             provider_name = "anthropic" if credentials.get("anthropic_api_key") else "mock"
-            success = pipeline.run(provider_name=provider_name, dry_run=dry_run)
+            # Cover art uses a SEPARATE provider from manuscript text — see
+            # pipeline.py run()'s docstring for the bug this fixes (the text
+            # provider_name was being threaded into the image-provider slot,
+            # which has no "anthropic" entry). "waterfall" is this repo's
+            # existing free-tier-first image fetcher (Pollinations, then
+            # Wikimedia — see empire_render.fetch_one_scene_image), reused
+            # here rather than paying for a dedicated cover-art API. Only
+            # used on a real (--live) run; dry-runs keep the zero-cost mock
+            # placeholder so testing stays fast and network-free.
+            image_provider_name = "waterfall" if not dry_run else "mock"
+            success = pipeline.run(
+                provider_name=provider_name, image_provider_name=image_provider_name, dry_run=dry_run,
+            )
 
             if not success:
                 raise MockPipelineError("BookPipeline.run() failed")
+
+            # Store pipeline instance for reuse in publishing step
+            cycle.pipeline = pipeline
 
             cycle.status = "manuscript"
             print(f"[BOOK FACTORY] ✓ Manuscript generated via Patterson formula")
@@ -223,6 +251,21 @@ class BookFactory:
             # Non-fatal: a missing commercial doesn't block publishing a book.
             print(f"[BOOK FACTORY] ⚠ Commercial queuing failed (non-fatal): {e}")
 
+        # 4.6. Queue book listings to multiple platforms via MISSION_BOARD.json
+        # Follows the same pattern as commercials: create missions, add to board,
+        # let video_pipeline_agent handle platform-specific uploads
+        try:
+            listing_results = queue_book_listings(
+                cycle=cycle,
+                mission_board_path=self.work_base.parent / "MISSION_BOARD.json",
+                platforms=["kdp", "d2d", "ingrampark", "payhip", "gumroad", "etsy"],
+            )
+            succeeded = sum(1 for v in listing_results.values() if v)
+            print(f"[BOOK FACTORY] ✓ Queued listings to {succeeded}/{len(listing_results)} platforms")
+        except Exception as e:
+            # Non-fatal: listing failures don't block the cycle
+            print(f"[BOOK FACTORY] ⚠ Listing queuing failed (non-fatal): {e}")
+
         # 5. Publish to all available platforms
         try:
             # Load credentials from environment
@@ -240,21 +283,39 @@ class BookFactory:
                 "manual_export",  # Fallback: generates upload-ready packages
             ]
 
-            # Get the pipeline instance to access publish() method
-            pipeline = BookPipeline(brief=cycle.brief, work_dir=str(cycle.work_dir))
+            # Reuse the pipeline instance created during manuscript generation
+            pipeline = cycle.pipeline
 
-            # Publish to all platforms (dry_run by default for safety)
+            # HUMAN APPROVAL GATE — this is the check that makes --live safe
+            # to run unattended (e.g. from a daily scheduled task). A cycle
+            # only gets a REAL publish call if Josh already ran
+            # `python -m storyforge2.approval approve <cycle_id>` for this
+            # exact cycle. Anything else — including a caller that passed
+            # dry_run=False — is forced back to dry_run here.
+            approved = self.approval.is_approved(cycle.cycle_id)
+            effective_dry_run = dry_run or not approved
+            if not dry_run and not approved:
+                print(f"[BOOK FACTORY] ⚠ LIVE publish requested but cycle "
+                      f"{cycle.cycle_id} is not approved — running publish "
+                      f"in DRY-RUN instead. Review the book in "
+                      f"{cycle.work_dir}, then approve with:\n"
+                      f"    python -m storyforge2.approval approve {cycle.cycle_id}")
+
+            # Publish to all platforms (dry_run unless explicitly approved)
             publish_results = pipeline.publish(
                 platforms=platforms_to_try,
                 credentials=credentials,
-                dry_run=dry_run
+                dry_run=effective_dry_run
             )
 
             # Count successes
             successes = sum(1 for r in publish_results.values() if r.get("status") == "ok")
-            print(f"[BOOK FACTORY] ✓ Published to {successes}/{len(platforms_to_try)} platforms")
+            print(f"[BOOK FACTORY] ✓ Published to {successes}/{len(platforms_to_try)} platforms"
+                  f"{' (dry-run)' if effective_dry_run else ' (LIVE)'}")
 
-            cycle.status = "published"
+            cycle.status = "published" if not effective_dry_run else "ready_publish"
+            if effective_dry_run and not dry_run:
+                cycle.error = "Awaiting approval — see storyforge2/approval.py"
         except Exception as e:
             # Even if publishing fails, mark as ready_publish so user can retry later
             cycle.status = "ready_publish"
@@ -299,7 +360,13 @@ class BookFactory:
             title=opportunity.title,
             premise=opportunity.premise,
             audience=opportunity.target_audience,
-            genre="non-fiction",
+            # Was hardcoded "non-fiction" — every automated cycle ignored the
+            # opportunity's actual niche/genre. Now the niche rotation in
+            # trends.py (which now includes fiction niches) drives genre,
+            # and manuscript.py's formula_for_genre() routes it to the
+            # right formula engine (Patterson for fiction, NonFictionFormula
+            # for non-fiction) automatically.
+            genre=opportunity.genre,
             author_name="Empire OS Publishing",
             length_chapters=12,  # 20k-40k words in 12 chapters
             platform_targets=["draft2digital", "gumroad"],  # will add more later

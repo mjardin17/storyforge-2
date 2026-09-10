@@ -30,10 +30,17 @@ import hashlib
 
 __all__ = ["TrendOpportunity", "TrendScanner"]
 
-# Evergreen niches with consistent demand, repeated yearly
+# Evergreen niches with consistent demand, repeated yearly.
+# Every spec carries "genre" — this is what actually decides which formula
+# engine (patterson_formula.py's PattersonFormula vs NonFictionFormula) writes
+# the book. It must contain a substring formula_for_genre() recognizes:
+# nonfiction markers ("non-fiction", "nonfiction", "self-help", "guide",
+# "how-to") or fiction markers ("fiction", "thriller", "mystery", "romance",
+# "fantasy", "sci-fi", "horror", "adventure", "drama", "ya").
 EVERGREEN_NICHES = {
     "personal-finance": {
         "name": "Personal Finance",
+        "genre": "non-fiction",
         "keywords": ["financial independence", "budgeting", "investing basics"],
         "audience": "working professionals aged 25-45",
         "pitch_template": "A practical guide to building wealth on a {profession} salary",
@@ -41,6 +48,7 @@ EVERGREEN_NICHES = {
     },
     "productivity-systems": {
         "name": "Productivity Systems",
+        "genre": "non-fiction",
         "keywords": ["time management", "focus", "deep work"],
         "audience": "knowledge workers, creators, entrepreneurs",
         "pitch_template": "How to implement {system} for {context}",
@@ -48,6 +56,7 @@ EVERGREEN_NICHES = {
     },
     "ai-for-business": {
         "name": "AI for Business",
+        "genre": "non-fiction",
         "keywords": ["ChatGPT", "automation", "AI workflows"],
         "audience": "small business owners, freelancers, SMBs",
         "pitch_template": "{AI tool} for {business_type}: a practical handbook",
@@ -55,6 +64,7 @@ EVERGREEN_NICHES = {
     },
     "health-wellness": {
         "name": "Health & Wellness",
+        "genre": "non-fiction",
         "keywords": ["sleep optimization", "nutrition", "fitness"],
         "audience": "health-conscious adults",
         "pitch_template": "The science-backed guide to {health_topic}",
@@ -62,6 +72,7 @@ EVERGREEN_NICHES = {
     },
     "remote-work": {
         "name": "Remote Work",
+        "genre": "non-fiction",
         "keywords": ["work from home", "async teams", "digital nomad"],
         "audience": "remote workers and distributed teams",
         "pitch_template": "Building a {work_aspect} strategy for remote teams",
@@ -69,6 +80,7 @@ EVERGREEN_NICHES = {
     },
     "side-hustle": {
         "name": "Side Hustles",
+        "genre": "non-fiction",
         "keywords": ["passive income", "freelancing", "micro-businesses"],
         "audience": "part-time entrepreneurs",
         "pitch_template": "Starting your {business_type} side hustle: a 90-day plan",
@@ -76,6 +88,7 @@ EVERGREEN_NICHES = {
     },
     "technical-writing": {
         "name": "Technical Writing",
+        "genre": "non-fiction",
         "keywords": ["documentation", "API docs", "technical communication"],
         "audience": "developers, technical writers, product managers",
         "pitch_template": "Making {technology} understandable: a technical writing guide",
@@ -83,9 +96,112 @@ EVERGREEN_NICHES = {
     },
     "machine-learning": {
         "name": "Machine Learning Basics",
+        "genre": "non-fiction",
         "keywords": ["neural networks", "ML workflow", "model training"],
         "audience": "aspiring ML engineers, data scientists",
         "pitch_template": "From zero to ML: a practical introduction for {background}",
+        "avg_audience_size": "medium",
+    },
+    "copywriting-seo": {
+        "name": "Copywriting & SEO",
+        "genre": "non-fiction",
+        "keywords": ["persuasive writing", "SEO optimization", "conversion copywriting"],
+        "audience": "content marketers, freelance writers, entrepreneurs",
+        "pitch_template": "The {channel} copywriting playbook: how to write content that converts",
+        "avg_audience_size": "large",
+    },
+    "real-estate-investing": {
+        "name": "Real Estate Investing",
+        "genre": "non-fiction",
+        "keywords": ["rental properties", "house flipping", "commercial real estate"],
+        "audience": "aspiring property investors",
+        "pitch_template": "Starting in real estate: {strategy} for building wealth with property",
+        "avg_audience_size": "large",
+    },
+    "cryptocurrency-blockchain": {
+        "name": "Cryptocurrency & Blockchain",
+        "genre": "non-fiction",
+        "keywords": ["Bitcoin", "blockchain technology", "DeFi investing"],
+        "audience": "crypto investors, tech enthusiasts",
+        "pitch_template": "Understanding {crypto_topic}: a practical guide for {investor_type}",
+        "avg_audience_size": "medium",
+    },
+    "personal-branding": {
+        "name": "Personal Branding",
+        "genre": "non-fiction",
+        "keywords": ["thought leadership", "personal brand", "online presence"],
+        "audience": "entrepreneurs, professionals, content creators",
+        "pitch_template": "Building your personal brand: stand out and monetize your expertise",
+        "avg_audience_size": "large",
+    },
+    "e-commerce-amazon": {
+        "name": "E-Commerce & Amazon",
+        "genre": "non-fiction",
+        "keywords": ["Amazon FBA", "dropshipping", "e-commerce automation"],
+        "audience": "online sellers, entrepreneurs",
+        "pitch_template": "The {platform} selling playbook: build a 6-figure {business_type}",
+        "avg_audience_size": "large",
+    },
+    "voice-podcast-strategy": {
+        "name": "Voice & Podcast Strategy",
+        "genre": "non-fiction",
+        "keywords": ["podcasting", "audio content", "voice monetization"],
+        "audience": "content creators, entrepreneurs",
+        "pitch_template": "Launching your podcast: audience building and monetization strategies",
+        "avg_audience_size": "medium",
+    },
+    # ── Fiction niches — routed to PattersonFormula (YA-thriller pacing
+    # engine: dialogue ratio, cliffhanger endings, sentence-length targets).
+    # MVP reuses one formula across all fiction subgenres below; if a
+    # specific subgenre's output reads wrong (e.g. cozy mystery shouldn't
+    # actually cliffhang every chapter), that's a formula-tuning follow-up,
+    # not a routing bug.
+    "ya-thriller": {
+        "name": "YA Thriller",
+        "genre": "YA thriller",
+        "keywords": ["young adult suspense", "page-turner", "twist ending"],
+        "audience": "YA readers aged 13-18",
+        "pitch_template": "A YA thriller about a teen who uncovers a secret that could destroy everything",
+        "avg_audience_size": "large",
+    },
+    "cozy-mystery": {
+        "name": "Cozy Mystery",
+        "genre": "cozy mystery",
+        "keywords": ["amateur sleuth", "small town", "whodunit"],
+        "audience": "adult cozy mystery readers",
+        "pitch_template": "A cozy mystery where an amateur sleuth in a small town solves a murder no one else can crack",
+        "avg_audience_size": "large",
+    },
+    "psychological-thriller": {
+        "name": "Psychological Thriller",
+        "genre": "psychological thriller",
+        "keywords": ["unreliable narrator", "domestic suspense", "slow-burn twist"],
+        "audience": "adult thriller readers",
+        "pitch_template": "A psychological thriller about a narrator whose grip on the truth is slipping",
+        "avg_audience_size": "large",
+    },
+    "epic-fantasy": {
+        "name": "Epic Fantasy",
+        "genre": "epic fantasy",
+        "keywords": ["magic system", "chosen one", "world-building"],
+        "audience": "fantasy readers aged 16+",
+        "pitch_template": "An epic fantasy where an unlikely hero must master a forbidden power to save their world",
+        "avg_audience_size": "medium",
+    },
+    "fantasy-romance": {
+        "name": "Fantasy Romance",
+        "genre": "fantasy romance",
+        "keywords": ["romantasy", "enemies to lovers", "magic academy"],
+        "audience": "adult fantasy romance readers",
+        "pitch_template": "A fantasy romance where rival magic-wielders are forced into an alliance neither of them wants",
+        "avg_audience_size": "large",
+    },
+    "scifi-adventure": {
+        "name": "Sci-Fi Adventure",
+        "genre": "sci-fi adventure",
+        "keywords": ["space opera", "survival", "first contact"],
+        "audience": "sci-fi readers aged 14+",
+        "pitch_template": "A sci-fi adventure where a stranded crew must survive first contact with something that shouldn't exist",
         "avg_audience_size": "medium",
     },
 }
@@ -103,6 +219,9 @@ class TrendOpportunity:
     estimated_audience_size: str  # small/medium/large
 
     # Metadata
+    # Default "non-fiction" so from_dict() can still reconstruct scan_history
+    # entries saved before fiction niches existed (they never had a "genre").
+    genre: str = "non-fiction"
     generated_at: datetime = field(default_factory=datetime.utcnow)
     scan_id: str = ""  # unique ID for this scan session
 
@@ -204,6 +323,7 @@ class TrendScanner:
             keywords=niche_spec["keywords"],
             target_audience=niche_spec["audience"],
             estimated_audience_size=niche_spec["avg_audience_size"],
+            genre=niche_spec.get("genre", "non-fiction"),
             scan_id=scan_id,
         )
 

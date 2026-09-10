@@ -13,9 +13,17 @@ from pathlib import Path
 from datetime import datetime
 import sys
 
-# Add lib to path
+# Add lib paths
+boss_listers_path = Path(__file__).resolve().parent.parent.parent / "BossListers"
 sys.path.insert(0, str(Path(__file__).parent.parent))
+if boss_listers_path.exists():
+    sys.path.insert(0, str(boss_listers_path))
+
 from lib.crosspost_bridge import queue_commercial_for_posting
+try:
+    from lib.bookListingGenerator import executeListingMission
+except ImportError:
+    executeListingMission = None
 
 BUZZ_RELAY_URL = os.getenv("BUZZ_RELAY_URL", "ws://localhost:3000")
 BUZZ_PRIVATE_KEY = os.getenv("BUZZ_PRIVATE_KEY")
@@ -59,6 +67,52 @@ def post_to_channel(message):
         print(f"  ✓ Buzz posted")
     elif "not found" not in stderr.lower():
         print(f"  ⚠️ Buzz error: {stderr[:50]}")
+
+def execute_listing(mission):
+    """Execute a book listing mission."""
+    mission_id = mission.get("id", "unknown")
+    platform = mission.get("platform", "unknown")
+    book_data = mission.get("book_data", {})
+    book_title = book_data.get("title", "Untitled")
+
+    post_to_channel(f"📚 Processing book listing: {book_title} (→ {platform.upper()})")
+
+    if not executeListingMission:
+        post_to_channel(f"⚠️ Book listing handler not available (bookListingGenerator not found)")
+        return False
+
+    try:
+        env = {
+            "D2D_API_KEY": os.getenv("D2D_API_KEY", ""),
+            "PAYHIP_API_KEY": os.getenv("PAYHIP_API_KEY", ""),
+            "GUMROAD_API_TOKEN": os.getenv("GUMROAD_API_TOKEN", ""),
+            "ETSY_ACCESS_TOKEN": os.getenv("ETSY_ACCESS_TOKEN", ""),
+            "ETSY_SHOP_ID": os.getenv("ETSY_SHOP_ID", ""),
+        }
+
+        result = executeListingMission(mission, env)
+        status = result.get("status", "error")
+
+        if status == "success":
+            url = result.get("url", "")
+            msg = f"✅ Listing posted: {book_title} → {platform.upper()}"
+            if url:
+                msg += f" ({url})"
+            post_to_channel(msg)
+            return True
+        elif status == "manual_package_generated":
+            post_to_channel(f"📦 Manual package generated for {platform.upper()}: {book_title}")
+            post_to_channel(f"   Instructions: {result.get('message', '')}")
+            return True
+        else:
+            error = result.get("error", "Unknown error")
+            post_to_channel(f"❌ Listing failed for {platform.upper()}: {error}")
+            return False
+
+    except Exception as e:
+        post_to_channel(f"❌ Error processing listing: {str(e)[:100]}")
+        return False
+
 
 def execute_render(mission):
     """Execute a render mission (episode or commercial)."""
@@ -157,7 +211,11 @@ def main():
                 if mission_id and mission_id not in processed_missions:
                     if mission.get("status") == "pending":
                         post_to_channel(f"📋 Found mission {mission_id}: {mission.get('title', 'Untitled')}")
-                        execute_render(mission)
+                        mission_type = mission.get("type", "episode")
+                        if mission_type == "book_listing":
+                            execute_listing(mission)
+                        else:
+                            execute_render(mission)
                         processed_missions.add(mission_id)
 
             time.sleep(30)

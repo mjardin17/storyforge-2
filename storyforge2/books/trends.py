@@ -86,14 +86,6 @@ EVERGREEN_NICHES = {
         "pitch_template": "Starting your {business_type} side hustle: a 90-day plan",
         "avg_audience_size": "large",
     },
-    "technical-writing": {
-        "name": "Technical Writing",
-        "genre": "non-fiction",
-        "keywords": ["documentation", "API docs", "technical communication"],
-        "audience": "developers, technical writers, product managers",
-        "pitch_template": "Making {technology} understandable: a technical writing guide",
-        "avg_audience_size": "small",
-    },
     "machine-learning": {
         "name": "Machine Learning Basics",
         "genre": "non-fiction",
@@ -142,20 +134,30 @@ EVERGREEN_NICHES = {
         "pitch_template": "The {platform} selling playbook: build a 6-figure {business_type}",
         "avg_audience_size": "large",
     },
-    "voice-podcast-strategy": {
-        "name": "Voice & Podcast Strategy",
-        "genre": "non-fiction",
-        "keywords": ["podcasting", "audio content", "voice monetization"],
-        "audience": "content creators, entrepreneurs",
-        "pitch_template": "Launching your podcast: audience building and monetization strategies",
-        "avg_audience_size": "medium",
-    },
     # ── Fiction niches — routed to PattersonFormula (YA-thriller pacing
-    # engine: dialogue ratio, cliffhanger endings, sentence-length targets).
+    # engine: dialogue ratio, cliffhang endings, sentence-length targets).
     # MVP reuses one formula across all fiction subgenres below; if a
     # specific subgenre's output reads wrong (e.g. cozy mystery shouldn't
     # actually cliffhang every chapter), that's a formula-tuning follow-up,
     # not a routing bug.
+    # Note: Romance is massive ($1.44B market, 40% of self-pub titles) so we
+    # include both contemporary and paranormal variants.
+    "contemporary-romance": {
+        "name": "Contemporary Romance",
+        "genre": "contemporary romance",
+        "keywords": ["enemies to lovers", "second chance romance", "small town romance"],
+        "audience": "adult romance readers (80% female)",
+        "pitch_template": "A contemporary romance between {character_type} who must overcome {obstacle} to find love",
+        "avg_audience_size": "large",
+    },
+    "paranormal-romance": {
+        "name": "Paranormal Romance",
+        "genre": "paranormal romance",
+        "keywords": ["vampire romance", "supernatural romance", "paranormal love story"],
+        "audience": "paranormal romance fans",
+        "pitch_template": "A paranormal romance where a {supernatural_being} falls for a {human_type} despite the danger",
+        "avg_audience_size": "large",
+    },
     "ya-thriller": {
         "name": "YA Thriller",
         "genre": "YA thriller",

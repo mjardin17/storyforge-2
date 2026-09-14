@@ -142,8 +142,16 @@ class StateStore:
     def create_project(self, brief: dict[str, Any], project_id: Optional[str] = None) -> str:
         pid = project_id or str(uuid.uuid4())
         now = time.time()
+        # INSERT OR IGNORE makes this idempotent: reconstructing a BookPipeline
+        # against a work_dir whose project row already exists (e.g. re-running
+        # publish() on an already-approved book) must reuse that row, not crash.
+        # Fixed 2026-09-13 after a real sqlite3.IntegrityError: UNIQUE constraint
+        # failed: projects.id, root-caused to books/08e3e63d/pipeline_state.db
+        # already containing this project's row from the original factory run
+        # (created_at matched the db file's own ctime -- proof it predated this
+        # session's tests, not a duplicate insert by the tests themselves).
         self._conn.execute(
-            "INSERT INTO projects (id, brief, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)",
+            "INSERT OR IGNORE INTO projects (id, brief, status, created_at, updated_at) VALUES (?, ?, 'active', ?, ?)",
             (pid, json.dumps(brief), now, now),
         )
         self._conn.commit()
